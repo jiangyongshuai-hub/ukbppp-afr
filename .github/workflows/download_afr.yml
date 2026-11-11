@@ -1,0 +1,37 @@
+# 这个文件要放到你的 GitHub 仓库的 .github/workflows/ 目录下
+# 例如: .github/workflows/download_afr.yml
+name: 下载UKB-PPP非洲pQTL单文件
+
+on:
+  workflow_dispatch:
+    inputs:
+      protein:
+        description: '蛋白 HGNC 符号(留空则下载第一个文件, 试通)'
+        required: false
+        default: ''
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: pip install synapseclient
+
+      - name: 下载非洲人群 pQTL 文件
+        env:
+          SYNAPSE_AUTH_TOKEN: ${{ secrets.SYNAPSE_AUTH_TOKEN }}
+        run: python download_one.py "${{ github.event.inputs.protein }}"
+
+      - name: 上传结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: ukbppp-afr-${{ github.event.inputs.protein || 'first' }}
+          path: output/
