@@ -1,66 +1,66 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-UKB-PPP 非洲人群(AFR) pQTL 单文件下载脚本
-================================================
-运行环境: GitHub Actions (ubuntu, 海外 IP, 不受 Synapse 地区封禁)
-
-用法:
-    python download_one.py [HGNC蛋白符号]
-
-- 带参数: 下载指定蛋白(如 APOE)的 AFR tar 文件
-- 不带参数或参数为空: 下载非洲文件夹里第一个蛋白的 tar 文件(试通用)
-
-依赖: pip install synapseclient
-环境变量: SYNAPSE_AUTH_TOKEN  (Synapse Personal Access Token, view+download 权限)
-"""
 import os
 import sys
 
 import synapseclient
 
-AFR_FOLDER = "syn51365304"   # UKB-PPP 非洲人群 pGWAS 汇总统计量文件夹
+FOLDERS = {
+    "afr": "syn51365304",
+    "csa": "syn51365305",
+    "mid": "syn51365307",
+}
 OUT_DIR = "output"
 
 
-def _id(c):
-    return c["id"] if isinstance(c, dict) else c.id
+def entity_id(entity):
+    return entity["id"] if isinstance(entity, dict) else entity.id
 
 
-def _name(c):
-    return c["name"] if isinstance(c, dict) else c.name
+def entity_name(entity):
+    return entity["name"] if isinstance(entity, dict) else entity.name
 
 
 def main():
     token = os.environ.get("SYNAPSE_AUTH_TOKEN")
     if not token:
-        print("[错误] 未设置环境变量 SYNAPSE_AUTH_TOKEN", file=sys.stderr)
-        sys.exit(2)
+        raise SystemExit("SYNAPSE_AUTH_TOKEN is not set")
 
-    target = sys.argv[1].strip().upper() if len(sys.argv) > 1 else ""
+    raw = sys.argv[1].strip() if len(sys.argv) > 1 else ""
+    ancestry = "afr"
+    target = raw
+    for prefix in FOLDERS:
+        marker = prefix + "_"
+        if raw.lower().startswith(marker):
+            ancestry = prefix
+            target = raw[len(marker):]
+            break
 
+    folder_id = FOLDERS[ancestry]
     syn = synapseclient.Synapse()
     syn.login(authToken=token)
 
-    print("列出非洲人群文件夹 %s ..." % AFR_FOLDER)
-    children = list(syn.getChildren(AFR_FOLDER, includeTypes=["file"]))
-    tars = [c for c in children if _name(c).endswith(".tar")]
-    print("共找到 %d 个蛋白 tar 文件" % len(tars))
+    print("Listing", ancestry, folder_id, flush=True)
+    children = list(syn.getChildren(folder_id, includeTypes=["file"]))
+    tars = [c for c in children if entity_name(c).lower().endswith(".tar")]
+    print("Found", len(tars), "tar files", flush=True)
 
-    if target:
-        matches = [c for c in tars if _name(c).upper().startswith(target + "_")]
+    if target.lower().endswith(".tar"):
+        matches = [c for c in tars if entity_name(c).lower() == target.lower()]
+        if len(matches) != 1:
+            raise SystemExit("Exact file match count for %s: %d" % (target, len(matches)))
+        chosen = matches[0]
+    elif target:
+        matches = [c for c in tars if entity_name(c).upper().startswith(target.upper() + "_")]
         if not matches:
-            print("[错误] 找不到蛋白 %s 的 tar 文件" % target, file=sys.stderr)
-            sys.exit(3)
+            raise SystemExit("Protein not found: " + target)
         chosen = matches[0]
     else:
         chosen = tars[0]
 
-    print("下载: %s  (id=%s)" % (_name(chosen), _id(chosen)))
     os.makedirs(OUT_DIR, exist_ok=True)
-    f = syn.get(_id(chosen), downloadLocation=OUT_DIR)
-    size_mb = os.path.getsize(f.path) / 1e6
-    print("下载完成: %s  (%.1f MB)" % (f.path, size_mb))
+    print("Downloading", entity_name(chosen), entity_id(chosen), flush=True)
+    result = syn.get(entity_id(chosen), downloadLocation=OUT_DIR)
+    print("Downloaded %s (%.1f MB)" % (result.path, os.path.getsize(result.path) / 1e6), flush=True)
 
 
 if __name__ == "__main__":
