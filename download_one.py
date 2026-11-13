@@ -71,6 +71,25 @@ def main():
         print("Manifest written", path, flush=True)
         return
 
+    if ancestry == "amr" and target.lower().startswith("batch_"):
+        parts = target.split("_")
+        if len(parts) != 3:
+            raise SystemExit("Batch format must be amr_batch_START_END")
+        start, end = int(parts[1]), int(parts[2])
+        if start < 0 or end <= start or end - start > 5:
+            raise SystemExit("Batch must contain between 1 and 5 files")
+        tars.sort(key=lambda c: entity_name(c).lower())
+        chosen_batch = tars[start:end]
+        if not chosen_batch:
+            raise SystemExit("Empty batch: %d-%d" % (start, end))
+        os.makedirs(OUT_DIR, exist_ok=True)
+        for chosen in chosen_batch:
+            print("Downloading", entity_name(chosen), entity_id(chosen), flush=True)
+            result = syn.get(entity_id(chosen), downloadLocation=OUT_DIR)
+            print("Downloaded %s (%.1f MB)" % (result.path, os.path.getsize(result.path) / 1e6), flush=True)
+        print("Batch complete", start, end, len(chosen_batch), flush=True)
+        return
+
     if target.lower().endswith(".tar"):
         matches = [c for c in tars if entity_name(c).lower() == target.lower()]
         if len(matches) != 1:
