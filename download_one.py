@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import os
 import sys
 
@@ -8,6 +9,7 @@ FOLDERS = {
     "afr": "syn51365304",
     "csa": "syn51365305",
     "mid": "syn51365307",
+    "amr": "syn51500434",
 }
 OUT_DIR = "output"
 
@@ -43,6 +45,31 @@ def main():
     children = list(syn.getChildren(folder_id, includeTypes=["file"]))
     tars = [c for c in children if entity_name(c).lower().endswith(".tar")]
     print("Found", len(tars), "tar files", flush=True)
+
+    if ancestry == "amr" and target.lower() == "manifest":
+        os.makedirs(OUT_DIR, exist_ok=True)
+        tars.sort(key=lambda c: entity_name(c).lower())
+        sample_indexes = sorted(set([0, 1, len(tars) // 4, len(tars) // 2,
+                                     (3 * len(tars)) // 4, len(tars) - 2, len(tars) - 1]))
+        samples = []
+        for index in sample_indexes:
+            child = tars[index]
+            entity = syn.get(entity_id(child), downloadFile=False)
+            handle = entity.get("_file_handle", {})
+            size = handle.get("contentSize") or entity.get("dataFileSizeBytes")
+            samples.append({"id": entity_id(child), "name": entity_name(child), "size": size})
+            print("Sample", entity_name(child), size, flush=True)
+        manifest = {
+            "folder_id": folder_id,
+            "count": len(tars),
+            "files": [{"id": entity_id(c), "name": entity_name(c)} for c in tars],
+            "samples": samples,
+        }
+        path = os.path.join(OUT_DIR, "amr_manifest.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(manifest, handle, ensure_ascii=False, indent=2)
+        print("Manifest written", path, flush=True)
+        return
 
     if target.lower().endswith(".tar"):
         matches = [c for c in tars if entity_name(c).lower() == target.lower()]
